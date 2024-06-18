@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  
+  
+  
+  <entry>
+    <title>自行搭建 frp 实现 Minecraft 多人联机</title>
+    <link href="/2024/06/18/frp%E8%81%94%E6%9C%BA/"/>
+    <url>/2024/06/18/frp%E8%81%94%E6%9C%BA/</url>
+    
+    <content type="html"><![CDATA[<h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>Minecraft 联机是个老生常谈的问题，市面上有很多的免费的联机解决方案，例如 SakuraFrp 和 OpenFrp 为代表的公益内网穿透，亦或是以蒲公英为代表的虚拟局域网的解决方案，以及 P2P 打洞，IPV6 联机等等……</p><p>今天介绍一种低成本而且效果非常好的联机方案，就是自己搭建内网穿透服务。<mark>我们以 Minecraft Java 版举例，关于基岩版在文章中会有说明。</mark></p><p>本教程适用的是家庭**<u>没有公网 IP</u>** 的情况，<del>话说家里申请到公网 IP 的还需要担心联机问题？</del></p><h2 id="购买服务器"><a href="#购买服务器" class="headerlink" title="购买服务器"></a>购买服务器</h2><p>既然是联机，那么就需要一个位于公网上的服务器来充当“桥梁”的作用，将玩家间的流量按照特定的规则进行转发。对于那些公益 frp，相当于是别人为你免费提供了这个中转服务器；而我们既然要自己搭建 frp 服务，那么就需要我们自己购买一台服务器。</p><p>这里更推荐阿里云的服务器，价格<u>相对来说</u>较为便宜。推荐通过活动购买，会比较便宜，新用户注册会有很大的优惠，另外大学生还会有另外的优惠，还在校的大学生们一定不能错过！如果只是搭建内网穿透的话，配置方面内存 1G 或者 2G 就够用了，不过还是建议购买至少 2G 的。如果追求最低成本，硬盘选最低即可，<mark>自动分配公网 IP 一定要勾选！！！</mark>系统的话就无脑选择 Ubuntu 绝对没毛病。关于 Linux 系统的基本操作以及云服务器的注意事项网上有很多，这里不再赘述。</p><p>下面我们假设你的服务器公网 IP 是 <mark>12.34.56.78</mark> 并且以 Ubuntu 系统举例。</p><h2 id="下载和配置-frp"><a href="#下载和配置-frp" class="headerlink" title="下载和配置 frp"></a>下载和配置 frp</h2><p>起到“桥梁”作用的叫做服务器，需要配置 frps 即 frp 服务端；同时，端口需要被暴露出去的（说白了就是开服的，房主）叫做客户端，需要配置 frpc 即 frp 客户端。下面将分别进行说明。</p><h3 id="服务端配置"><a href="#服务端配置" class="headerlink" title="服务端配置"></a>服务端配置</h3><p>我们需要用到这样一个开源项目：<a href="https://github.com/fatedier/frp">https://github.com/fatedier/frp</a></p><p>找到 Releases 的最新版，在 Assets 中找到适合你的服务器系统的版本进行下载：在写这篇文章时，最新版本是 0.56.0，我们用的服务器系统是 Ubuntu 64位，因此我们下载 <code>frp_0.56.0_linux_amd64.tar.gz</code> 并解压。</p><p>文件夹里有 <code>frps</code> ,<code>frps.toml</code> ,<code>frpc</code> ,<code>frpc.toml</code> ,<code>LICENSE</code> 5 个文件，我们只需要用到 <code>frps</code> 和 <code>frps.toml</code> 两个文件即可。</p><p>修改 <code>frps.toml</code> 配置文件，参考如下配置：</p><figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs ini"><span class="hljs-attr">bindPort</span> = <span class="hljs-number">1234</span>  <span class="hljs-comment"># 监听客户端的端口</span><br><span class="hljs-attr">auth.token</span> = <span class="hljs-string">&quot;1234abcd&quot;</span>  <span class="hljs-comment"># 可选，用于验证客户端的身份</span><br></code></pre></td></tr></table></figure><p>修改完配置文件后，执行 <code>sudo chmod +x ./frps</code> 给二进制文件可执行权限，之后通过 <code>./frps -c ./frps.toml</code> 即可启动服务端，如果出现类似如下输出，说明启动成功，服务端的配置就到此结束。</p><blockquote><p>如果觉得每次要输入很长的命令启动，可以使用脚本文件，或者可以将其注册为系统服务并开机自启，又或者如果你安装的有管理面板，使用面板中的守护进程来管理。</p></blockquote><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs bash">[I] [frps/root.go:105] frps uses config file: frps.toml<br>[I] [server/service.go:237] frps tcp listen on 0.0.0.0:1234<br>[I] [frps/root.go:114] frps started successfully<br></code></pre></td></tr></table></figure><p><font color=red><mark>请注意，这很重要！！！：</mark>如果你使用的是 ssh 连接远程服务器，如果 frps 运行在你当前的 ssh 会话上，一旦你断开连接，结束此次会话，frps 进程会被 kill，因此推荐使用 screen 相关命令将其运行在后台的会话，具体命令使用方法请读者自行百度。</font></p><h3 id="客户端配置"><a href="#客户端配置" class="headerlink" title="客户端配置"></a>客户端配置</h3><p>假如房主的系统是 Windows 64位，我们则在 frp 的 Releases 下载 <code>frp_0.56.0_windows_amd64.zip</code> 并解压。</p><p>文件夹里有 <code>frps.exe</code> ,<code>frps.toml</code> ,<code>frpc.exe</code> ,<code>frpc.toml</code> ,<code>LICENSE</code> 5 个文件，我们只需要用到 <code>frpc.exe</code> 和 <code>frpc.toml</code> 两个文件即可。</p><p>修改 <code>frpc.toml</code> 配置文件，参考如下配置：</p><figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><code class="hljs ini"><span class="hljs-attr">serverAddr</span> = <span class="hljs-string">&quot;12.34.56.78&quot;</span>  <span class="hljs-comment"># 改为你的服务器地址</span><br><span class="hljs-attr">serverPort</span> = <span class="hljs-number">1234</span>  <span class="hljs-comment"># 与上文的 bindPort 要对应上</span><br><span class="hljs-attr">auth.token</span> = <span class="hljs-string">&quot;1234abcd&quot;</span>  <span class="hljs-comment"># 如果上文有配置，则要保持一致，否则无法连接</span><br><br><span class="hljs-section">[[proxies]]</span>  <span class="hljs-comment"># 如有需要，可按照 5~10 行的模板在文件末补加规则即可</span><br><span class="hljs-attr">name</span> = <span class="hljs-string">&quot;test&quot;</span>  <span class="hljs-comment"># 这条规则的别名，用于区分，最好是英文</span><br><span class="hljs-attr">type</span> = <span class="hljs-string">&quot;tcp&quot;</span>  <span class="hljs-comment"># 连接协议，Minecraft Java 版为 tcp</span><br><span class="hljs-attr">localIP</span> = <span class="hljs-string">&quot;127.0.0.1&quot;</span>  <span class="hljs-comment"># 无需修改</span><br><span class="hljs-attr">localPort</span> = <span class="hljs-number">25565</span>  <span class="hljs-comment"># 要与对局域网开放的端口或者 mc 服务器的配置端口一致</span><br><span class="hljs-attr">remotePort</span> = <span class="hljs-number">25565</span>  <span class="hljs-comment"># 别人使用哪个端口进行连接</span><br></code></pre></td></tr></table></figure><p>配置完毕后，在终端中执行 <code>frpc.exe -c frpc.toml</code> 即可启动，如果出现以下类似信息，说明内网穿透已经成功了</p><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><code class="hljs bash">[I] [sub/root.go:142] start frpc service <span class="hljs-keyword">for</span> config file [frpc.toml]<br>[I] [client/service.go:294] try to connect to server...<br>[I] [client/service.go:286] [64bc14d064043428] login to server success, get run <span class="hljs-built_in">id</span> [64bc14d064043428]<br>[I] [proxy/proxy_manager.go:173] [64bc14d064043428] proxy added: [<span class="hljs-built_in">test</span>]<br>[I] [client/control.go:170] [64bc14d064043428] [<span class="hljs-built_in">test</span>] start proxy success<br></code></pre></td></tr></table></figure><blockquote><p>以上配置对于基岩版来说，tcp 协议应该为 udp 协议</p></blockquote><h2 id="游戏连接"><a href="#游戏连接" class="headerlink" title="游戏连接"></a>游戏连接</h2><p>房主，也就是配置了 frpc 的那台机器，可以开设服务器或者对局域网开放。考虑到如果有能力开设服务器那么应该是不需要详细的说明，所以我们以对局域网开放的方式为例。</p><blockquote><p>我们在此假设玩家都有正版账户而且是正版登录，如果需要非正版玩家加入，则需要相关模组来实现，请读者自行百度。</p></blockquote><p>首先打开一个单人世界，打开暂停界面，选择“对局域网开放”或者“Open to LAN”，注意这里的端口号要与 <code>frpc.toml</code> 文件中的 <code>localPort</code> 保持一致。</p><p><img src="/img/frp01.jpg" alt="对局域网开放界面的选项">对于需要连接至该世界的玩家。则无需任何配置，直接打开对应版本的 Minecraft，进入多人游戏，添加服务器或者直接连接，IP 地址的格式为 <code>服务器地址:remotePort</code> 。</p><p>举个例子，我们假设我们的云服务器公网 IP 为 <code>12.34.56.78</code> ，我们上文配置的 <code>remotePort</code> 为 <strong>25565</strong>，因此其他玩家使用 <code>12.34.56.78:25565</code> 即可连接至世界。</p><p><img src="/img/frp02.jpg" alt="玩家连接"></p><p>另外，Minecraft 多人游戏的默认端口为 <strong>25565</strong>，因此如果我们的远程端口配置为 <strong>25565</strong>，那么 IP 后面的端口号可以省略，所以 <code>12.34.56.78</code> 也可以连接。</p><h2 id="其他说明"><a href="#其他说明" class="headerlink" title="其他说明"></a>其他说明</h2><ul><li>请注意，如果你购买了云服务器，请记得在服务器提供商的安全组中放行 <code>bindPort</code> 和 <code>remotePort</code> 对应的端口（如果是 Java 版，则放行两者的 <u><strong>TCP</strong></u> 协议；如果是基岩版，<code>bindPort</code> 放行 <u><strong>TCP</strong></u> 协议，<code>remotePort</code> 放行 <u><strong>UDP</strong></u> 协议）。</li><li>如果觉得 ip 地址太难看，可以购买一个域名<del>（或者白嫖一个）</del>，解析到这个 ip 地址，具体操作请读者自行百度。</li></ul>]]></content>
+    
+    
+    <categories>
+      
+      <category>Minecraft</category>
+      
+      <category>联机</category>
+      
+    </categories>
+    
+    
+    <tags>
+      
+      <tag>Minecraft</tag>
+      
+    </tags>
+    
+  </entry>
+  
+  
+  
+  <entry>
+    <title>Hello, I&#39;m dodo939</title>
+    <link href="/2024/06/18/hello/"/>
+    <url>/2024/06/18/hello/</url>
+    
+    <content type="html"><![CDATA[<h2 id="Hello"><a href="#Hello" class="headerlink" title="Hello"></a>Hello</h2><p>dodo939 的小窝翻<del>(旧)</del>新了！</p><p>多多关照~</p>]]></content>
+    
+    
+    
+  </entry>
+  
+  
+  
+  
+</search>
